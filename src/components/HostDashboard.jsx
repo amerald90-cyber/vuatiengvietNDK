@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 import { QRCodeSVG } from 'qrcode.react';
-import { Play, SkipForward, Users, Trophy, ShieldAlert, Cpu, Eye, Copy, Check, Sparkles, Clock, Music, Volume2, VolumeX } from 'lucide-react';
+import { Play, SkipForward, Users, Trophy, ShieldAlert, Cpu, Eye, Copy, Check, Sparkles, Clock, Music, Volume2, VolumeX, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function HostDashboard() {
@@ -81,7 +81,7 @@ export default function HostDashboard() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-4 space-y-6">
 
-      {/* TOP HEADER CONTROLS BAR (FROM SCREENSHOT) */}
+      {/* TOP HEADER CONTROLS BAR */}
       <div className="flex items-center justify-between border-b border-cyan-500/20 pb-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 p-[1px] flex items-center justify-center shadow-lg shadow-cyan-500/20">
@@ -101,9 +101,16 @@ export default function HostDashboard() {
 
         <div className="flex items-center gap-3">
           {room && (
-            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-cyan-500/30 text-xs font-mono">
-              <span className="text-slate-400 mr-1.5">PHÒNG:</span>
+            <div className="px-3 py-1.5 rounded-lg bg-slate-900 border border-cyan-500/30 text-xs font-mono flex items-center gap-2">
+              <span className="text-slate-400">PHÒNG:</span>
               <span className="font-extrabold text-cyan-300 text-sm tracking-widest">{room.room_code}</span>
+              <button
+                onClick={() => createRoom()}
+                className="p-1 text-slate-400 hover:text-cyan-300 transition"
+                title="Tạo mã phòng ngẫu nhiên mới"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
           <button
@@ -116,7 +123,7 @@ export default function HostDashboard() {
         </div>
       </div>
 
-      {/* 1. WAITING ROOM CARD WITH QR CODE & LINK (MATCHING SCREENSHOT) */}
+      {/* 1. WAITING ROOM CARD WITH QR CODE & LINK */}
       {(!room || room.status === 'waiting') && (
         <div className="space-y-6">
           <div className="text-center space-y-3 py-2">
@@ -149,9 +156,18 @@ export default function HostDashboard() {
                 {/* LEFT SIDE: ROOM CODE & COPY LINK */}
                 <div className="space-y-6 text-center md:text-left">
                   <div>
-                    <p className="text-xs font-mono text-cyan-300 uppercase tracking-widest mb-1">
-                      MÃ PHÒNG THAM GIA:
-                    </p>
+                    <div className="flex items-center justify-center md:justify-start gap-2">
+                      <p className="text-xs font-mono text-cyan-300 uppercase tracking-widest mb-1">
+                        MÃ PHÒNG THAM GIA:
+                      </p>
+                      <button
+                        onClick={() => createRoom()}
+                        className="text-xs text-slate-400 hover:text-cyan-300 transition flex items-center gap-1 font-mono mb-1"
+                        title="Tạo mã phòng ngẫu nhiên mới"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Đổi mã
+                      </button>
+                    </div>
                     <h2 className="text-5xl sm:text-6xl font-black font-mono tracking-widest text-cyan-300 neon-glow-cyan">
                       {room.room_code}
                     </h2>
@@ -205,7 +221,7 @@ export default function HostDashboard() {
             </motion.div>
           )}
 
-          {/* BOTTOM STATUS BAR (FROM SCREENSHOT) */}
+          {/* BOTTOM STATUS BAR */}
           <div className="flex items-center justify-center gap-4 text-xs font-mono">
             <div className="px-4 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-slate-300 flex items-center gap-2">
               <Users className="w-4 h-4 text-purple-400" />
@@ -219,7 +235,7 @@ export default function HostDashboard() {
         </div>
       )}
 
-      {/* 2. GAMEPLAY WALL DISPLAY ("TRÊN TƯỜNG KHI CÓ NGƯỜI CHƠI BẮT ĐẦU HIỆN CÂU HỎI... HẾT GIỜ MỚI HIỆN ĐÁP ÁN") */}
+      {/* 2. GAMEPLAY WALL DISPLAY */}
       {room && room.status === 'playing' && currentQuestion && (
         <div className="space-y-6">
           
@@ -264,7 +280,7 @@ export default function HostDashboard() {
               </div>
             </div>
 
-            {/* REVEAL ANSWER SECTION ("HẾT GIỜ MỚI HIỆN ĐÁP ÁN") */}
+            {/* REVEAL ANSWER SECTION */}
             <div className="mt-8 pt-6 border-t border-slate-800 text-center">
               {!isAnswerRevealed ? (
                 <div className="space-y-4">

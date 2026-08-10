@@ -3,7 +3,7 @@ import { SAMPLE_QUESTIONS, shuffleVietnameseWord, splitVietnameseCharacters, che
 import { soundEngine } from '../utils/soundEngine';
 import { supabase, broadcastLocalEvent, subscribeLocalEvents } from '../lib/SupabaseClient';
 
-// Helper to generate 4-letter room code (e.g., 'EWQD')
+// Helper to generate 4-letter uppercase room code (e.g., 'EWQD', 'A9RT')
 const generateRoomCode = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -11,6 +11,28 @@ const generateRoomCode = () => {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
+};
+
+// Local storage room registry helper for multi-tab / offline sync
+const saveLocalRoom = (room) => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(`ai_word_room_${room.room_code}`, JSON.stringify(room));
+    localStorage.setItem('ai_word_latest_room', JSON.stringify(room));
+  } catch (e) {}
+};
+
+const getLocalRoom = (code) => {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    if (code) {
+      const stored = localStorage.getItem(`ai_word_room_${code.toUpperCase()}`);
+      if (stored) return JSON.parse(stored);
+    }
+    const latest = localStorage.getItem('ai_word_latest_room');
+    if (latest) return JSON.parse(latest);
+  } catch (e) {}
+  return null;
 };
 
 export const useGameStore = create((set, get) => ({
@@ -74,6 +96,8 @@ export const useGameStore = create((set, get) => ({
       started_at: null
     };
 
+    saveLocalRoom(newRoom);
+
     if (supabase) {
       try {
         const { data, error } = await supabase.from('rooms').insert([newRoom]).select().single();
@@ -110,12 +134,18 @@ export const useGameStore = create((set, get) => ({
       } catch (e) {}
     }
 
+    // Fallback 1: check active memory store
     if (!targetRoom && get().room && get().room.room_code === codeUpper) {
       targetRoom = get().room;
     }
 
+    // Fallback 2: check localStorage registry
     if (!targetRoom) {
-      return { success: false, message: 'Phòng không tồn tại hoặc Mã Phòng sai!' };
+      targetRoom = getLocalRoom(codeUpper);
+    }
+
+    if (!targetRoom) {
+      return { success: false, message: 'Phòng không tồn tại hoặc Mã Phòng sai! Vui lòng kiểm tra lại Mã Phòng.' };
     }
 
     const newPlayer = {
@@ -129,7 +159,7 @@ export const useGameStore = create((set, get) => ({
 
     if (supabase) {
       try {
-        const { data: pData } = await supabase
+        const { data: pData, error } = await supabase
           .from('players')
           .insert([newPlayer])
           .select()
@@ -161,6 +191,8 @@ export const useGameStore = create((set, get) => ({
       // Game Finished
       const updatedRoom = { ...get().room, status: 'finished' };
       set({ room: updatedRoom, isAnswerRevealed: true });
+      saveLocalRoom(updatedRoom);
+
       if (supabase) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', updatedRoom.id);
       } else {
@@ -178,6 +210,8 @@ export const useGameStore = create((set, get) => ({
       current_question_id: q.id,
       started_at: nowIso
     };
+
+    saveLocalRoom(updatedRoom);
 
     const tiles = shuffleVietnameseWord(q.answer);
 
@@ -353,6 +387,8 @@ export const useGameStore = create((set, get) => ({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, payload => {
         if (payload.new) {
           set({ room: payload.new });
+          saveLocalRoom(payload.new);
+
           if (payload.new.current_question_id) {
             const q = get().questions.find(q => q.id === payload.new.current_question_id);
             if (q) {
@@ -379,11 +415,17 @@ export const useGameStore = create((set, get) => ({
   subscribeLocalRealtime: () => {
     return subscribeLocalEvents((msg) => {
       const { type, payload } = msg;
-      if (type === 'PLAYER_JOINED') {
+      if (type === 'ROOM_CREATED' || type === 'ROOM_UPDATED') {
+        saveLocalRoom(payload);
+        if (get().role === 'player' && get().room?.id === payload.id) {
+          set({ room: payload });
+        }
+      } else if (type === 'PLAYER_JOINED') {
         set(state => ({
           playersList: [...state.playersList.filter(p => p.id !== payload.id), payload]
         }));
       } else if (type === 'QUESTION_STARTED') {
+        saveLocalRoom(payload.room);
         set({
           room: payload.room,
           currentQuestion: payload.question,
