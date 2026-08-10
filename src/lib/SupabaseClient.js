@@ -3,13 +3,18 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-const isConfigured = supabaseUrl.startsWith('https://') && supabaseAnonKey.length > 20;
+// Only enable real Supabase if credentials are valid and NOT placeholder values
+const isConfigured = 
+  supabaseUrl.startsWith('https://') && 
+  !supabaseUrl.includes('your-supabase-project') &&
+  supabaseAnonKey.length > 20 &&
+  !supabaseAnonKey.includes('your-anon-key');
 
 export const supabase = isConfigured 
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
-// Local BroadcastChannel helper for dev testing when Supabase is not connected
+// Local BroadcastChannel helper for multi-tab testing
 const localChannel = typeof window !== 'undefined' ? new BroadcastChannel('ai_word_challenge_channel') : null;
 
 export const broadcastLocalEvent = (event, payload) => {

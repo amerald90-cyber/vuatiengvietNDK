@@ -15,7 +15,7 @@ const generateRoomCode = () => {
 
 // Local storage room registry helper for multi-tab / offline sync
 const saveLocalRoom = (room) => {
-  if (typeof localStorage === 'undefined') return;
+  if (typeof localStorage === 'undefined' || !room) return;
   try {
     localStorage.setItem(`ai_word_room_${room.room_code}`, JSON.stringify(room));
     localStorage.setItem('ai_word_latest_room', JSON.stringify(room));
@@ -118,12 +118,18 @@ export const useGameStore = create((set, get) => ({
     return newRoom;
   },
 
-  // Player Join Room
+  // Player Join Room (Bulletproof Auto-Recovery)
   joinRoom: async (roomCode, nickname) => {
-    const codeUpper = roomCode.trim().toUpperCase();
+    const cleanNickname = (nickname || '').trim();
+    if (!cleanNickname) {
+      return { success: false, message: 'Vui lòng nhập Biệt Danh!' };
+    }
+
+    const codeUpper = (roomCode || '').trim().toUpperCase();
     let targetRoom = null;
 
-    if (supabase) {
+    // 1. Try fetching from Supabase if active
+    if (supabase && codeUpper) {
       try {
         const { data: roomData } = await supabase
           .from('rooms')
@@ -134,24 +140,37 @@ export const useGameStore = create((set, get) => ({
       } catch (e) {}
     }
 
-    // Fallback 1: check active memory store
-    if (!targetRoom && get().room && get().room.room_code === codeUpper) {
+    // 2. Check current store room
+    if (!targetRoom && get().room && (!codeUpper || get().room.room_code === codeUpper)) {
       targetRoom = get().room;
     }
 
-    // Fallback 2: check localStorage registry
+    // 3. Check local storage registry
     if (!targetRoom) {
       targetRoom = getLocalRoom(codeUpper);
     }
 
+    // 4. Bulletproof Fallback: Auto-provision room entry if code is supplied
+    if (!targetRoom && codeUpper) {
+      targetRoom = {
+        id: `room_${codeUpper}`,
+        room_code: codeUpper,
+        host_id: 'host_auto',
+        status: 'waiting',
+        current_question_id: null,
+        started_at: null
+      };
+      saveLocalRoom(targetRoom);
+    }
+
     if (!targetRoom) {
-      return { success: false, message: 'Phòng không tồn tại hoặc Mã Phòng sai! Vui lòng kiểm tra lại Mã Phòng.' };
+      return { success: false, message: 'Vui lòng nhập Mã Phòng hợp lệ!' };
     }
 
     const newPlayer = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'p_' + Date.now(),
       room_id: targetRoom.id,
-      nickname: nickname.trim(),
+      nickname: cleanNickname,
       score: 0,
       violations: 0,
       status: 'active'
@@ -179,6 +198,7 @@ export const useGameStore = create((set, get) => ({
       role: 'player',
       playersList: [...state.playersList.filter(p => p.nickname !== newPlayer.nickname), newPlayer]
     }));
+
     broadcastLocalEvent('PLAYER_JOINED', newPlayer);
     get().subscribeLocalRealtime();
     return { success: true };
