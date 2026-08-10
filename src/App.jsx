@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import AdminLogin from './components/AdminLogin';
 import HostDashboard from './components/HostDashboard';
@@ -10,6 +10,17 @@ import { motion } from 'framer-motion';
 export default function App() {
   const { role, setRole, isAdminLoggedIn } = useGameStore();
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+
+  // Auto-detect URL query parameter ?code=XXXX (e.g. from scanning QR code!)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlCode = params.get('code');
+      if (urlCode && role === 'none') {
+        setRole('player');
+      }
+    }
+  }, [role]);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 scanline-effect selection:bg-cyan-500 selection:text-slate-950">
@@ -65,7 +76,7 @@ export default function App() {
                     THÍ SINH THAM GIA
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    Nhập Mã Phòng và nickname để thi đấu cùng người chơi khác
+                    Quét QR Code hoặc Nhập Mã Phòng để thi đấu cùng người chơi khác
                   </p>
                 </div>
                 <button className="w-full py-3 rounded-xl neon-button text-slate-950 font-extrabold text-xs uppercase tracking-wider">

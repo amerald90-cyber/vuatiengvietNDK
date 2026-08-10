@@ -19,11 +19,19 @@ export default function PlayerScreen() {
     submitAnswer,
     hasSubmittedCurrentQuestion,
     lastAnswerResult,
-    recordTabSwitchViolation
+    recordTabSwitchViolation,
+    isAnswerRevealed
   } = useGameStore();
 
-  // JOIN FORM STATE
-  const [roomCodeInput, setRoomCodeInput] = useState('');
+  // JOIN FORM STATE WITH URL AUTO-PREFILL
+  const [roomCodeInput, setRoomCodeInput] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return (params.get('code') || '').toUpperCase();
+    }
+    return '';
+  });
+
   const [nicknameInput, setNicknameInput] = useState('');
   const [joinError, setJoinError] = useState('');
   const [showAntiCheatWarning, setShowAntiCheatWarning] = useState(false);
@@ -105,7 +113,7 @@ export default function PlayerScreen() {
               THAM GIA GIẢI ĐẤU
             </h2>
             <p className="text-xs text-slate-400">
-              Nhập mã phòng từ Host để bắt đầu thử thách AI Word Challenge
+              Nhập tên biệt danh để bắt đầu thử thách AI Word Challenge
             </p>
           </div>
 
@@ -119,7 +127,7 @@ export default function PlayerScreen() {
           <form onSubmit={handleJoinSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-mono text-cyan-300 uppercase tracking-wider mb-1">
-                MÃ PHÒNG (6 CHỮ SỐ)
+                MÃ PHÒNG THAM GIA
               </label>
               <input
                 type="text"
@@ -127,8 +135,8 @@ export default function PlayerScreen() {
                 maxLength={10}
                 value={roomCodeInput}
                 onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                placeholder="VD: 123456"
-                className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-cyan-500/30 text-cyan-300 font-mono text-center text-lg tracking-widest uppercase focus:outline-none focus:border-cyan-400 transition"
+                placeholder="VD: EWQD"
+                className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-cyan-500/30 text-cyan-300 font-mono text-center text-xl tracking-widest uppercase focus:outline-none focus:border-cyan-400 transition"
               />
             </div>
 
@@ -151,7 +159,7 @@ export default function PlayerScreen() {
               type="submit"
               className="w-full py-4 rounded-xl font-black text-sm neon-button text-slate-950 shadow-lg tracking-wider uppercase mt-2"
             >
-              VÀO PHÒNG CHOI
+              VÀO PHÒNG CHƠI
             </button>
           </form>
 
@@ -198,8 +206,8 @@ export default function PlayerScreen() {
           <p className="text-xs text-slate-400">
             Xin chào <strong className="text-cyan-300">{player.nickname}</strong>, hãy sẵn sàng!
           </p>
-          <div className="inline-block px-4 py-2 rounded-xl bg-slate-900 border border-cyan-500/30 font-mono text-xs text-cyan-400">
-            Mã phòng: {room.room_code}
+          <div className="inline-block px-4 py-2 rounded-xl bg-slate-900 border border-cyan-500/30 font-mono text-sm text-cyan-300 font-black tracking-widest">
+            MÃ PHÒNG: {room.room_code}
           </div>
         </div>
       </div>
@@ -302,6 +310,17 @@ export default function PlayerScreen() {
           >
             {lastAnswerResult.is_correct ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
             <span>{lastAnswerResult.message}</span>
+          </motion.div>
+        )}
+
+        {/* REVEAL OFFICIAL ANSWER WHEN EXPIRATION / HOST REVEALS */}
+        {isAnswerRevealed && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="p-3 rounded-xl bg-purple-950/60 border border-purple-500/40 text-purple-300 text-xs font-mono"
+          >
+            ĐÁP ÁN CHÍNH THỨC: <strong className="text-cyan-300 font-bold">{currentQuestion.answer}</strong>
           </motion.div>
         )}
       </div>

@@ -3,6 +3,16 @@ import { SAMPLE_QUESTIONS, shuffleVietnameseWord, splitVietnameseCharacters, che
 import { soundEngine } from '../utils/soundEngine';
 import { supabase, broadcastLocalEvent, subscribeLocalEvents } from '../lib/SupabaseClient';
 
+// Helper to generate 4-letter room code (e.g., 'EWQD')
+const generateRoomCode = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
+
 export const useGameStore = create((set, get) => ({
   // AUTH & APP STATE
   isAdminLoggedIn: false,
@@ -15,6 +25,7 @@ export const useGameStore = create((set, get) => ({
   questions: SAMPLE_QUESTIONS,
   currentQuestionIndex: 0,
   currentQuestion: null,
+  isAnswerRevealed: false, // "Hết giờ mới hiện đáp án" logic
 
   // PLAYER STATE
   player: null, // { id, room_id, nickname, score, violations, status }
@@ -29,7 +40,6 @@ export const useGameStore = create((set, get) => ({
 
   // ACTIONS
 
-  // 1. Admin Auth Action
   loginAdmin: (username, password) => {
     const envUser = import.meta.env.VITE_ADMIN_USER || 'ngọc đại ka';
     const envPass = import.meta.env.VITE_ADMIN_PASS || 'chaodaika';
@@ -52,9 +62,9 @@ export const useGameStore = create((set, get) => ({
     set({ soundMuted: isMuted });
   },
 
-  // 2. Host Room Creation
+  // Host Room Creation with 4-character Code
   createRoom: async () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = generateRoomCode();
     const newRoom = {
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'room_' + Date.now(),
       room_code: code,
@@ -84,23 +94,23 @@ export const useGameStore = create((set, get) => ({
     return newRoom;
   },
 
-  // 3. Player Join Room
+  // Player Join Room
   joinRoom: async (roomCode, nickname) => {
+    const codeUpper = roomCode.trim().toUpperCase();
     let targetRoom = null;
 
     if (supabase) {
       try {
-        const { data: roomData, error } = await supabase
+        const { data: roomData } = await supabase
           .from('rooms')
           .select('*')
-          .eq('room_code', roomCode)
+          .eq('room_code', codeUpper)
           .single();
         if (roomData) targetRoom = roomData;
       } catch (e) {}
     }
 
-    // Fallback to active store room if matching
-    if (!targetRoom && get().room && get().room.room_code === roomCode) {
+    if (!targetRoom && get().room && get().room.room_code === codeUpper) {
       targetRoom = get().room;
     }
 
@@ -119,7 +129,7 @@ export const useGameStore = create((set, get) => ({
 
     if (supabase) {
       try {
-        const { data: pData, error } = await supabase
+        const { data: pData } = await supabase
           .from('players')
           .insert([newPlayer])
           .select()
@@ -144,13 +154,13 @@ export const useGameStore = create((set, get) => ({
     return { success: true };
   },
 
-  // 4. Host Starts Game / Advances Question
+  // Host Starts Question
   startQuestion: async (questionIndex = 0) => {
     const questionsList = get().questions;
     if (questionIndex >= questionsList.length) {
       // Game Finished
       const updatedRoom = { ...get().room, status: 'finished' };
-      set({ room: updatedRoom });
+      set({ room: updatedRoom, isAnswerRevealed: true });
       if (supabase) {
         await supabase.from('rooms').update({ status: 'finished' }).eq('id', updatedRoom.id);
       } else {
@@ -178,7 +188,8 @@ export const useGameStore = create((set, get) => ({
       availableTiles: tiles,
       selectedTiles: [],
       hasSubmittedCurrentQuestion: false,
-      lastAnswerResult: null
+      lastAnswerResult: null,
+      isAnswerRevealed: false // Hide answer during solving time!
     });
 
     soundEngine.startBgm();
@@ -196,7 +207,13 @@ export const useGameStore = create((set, get) => ({
     }
   },
 
-  // 5. Drag & Drop / Tap Tile Assembly logic
+  // Reveal Answer (When 60s expires or Host triggers reveal)
+  revealAnswer: () => {
+    set({ isAnswerRevealed: true });
+    soundEngine.stopBgm();
+  },
+
+  // Drag & Drop / Tap Tile Assembly logic
   addTileToAnswer: (tileIndex) => {
     const { availableTiles, selectedTiles, player } = get();
     if (player && player.status === 'eliminated') return;
@@ -231,7 +248,7 @@ export const useGameStore = create((set, get) => ({
     set({ availableTiles: tiles, selectedTiles: [] });
   },
 
-  // 6. Submit Answer with 60s Server Authoritative Validation
+  // Submit Answer
   submitAnswer: async () => {
     const { room, player, currentQuestion, selectedTiles, hasSubmittedCurrentQuestion } = get();
     if (!room || !player || !currentQuestion || hasSubmittedCurrentQuestion) return;
@@ -244,7 +261,6 @@ export const useGameStore = create((set, get) => ({
     const startTime = new Date(room.started_at || now).getTime();
     const elapsedSeconds = (now - startTime) / 1000;
 
-    // Server-Authoritative Anti-Cheat 60s Check
     if (elapsedSeconds > 60) {
       soundEngine.playIncorrect();
       set({
@@ -283,7 +299,7 @@ export const useGameStore = create((set, get) => ({
       lastAnswerResult: {
         is_correct: isCorrect,
         points_earned: pointsEarned,
-        message: isCorrect ? `Chính xác! +${pointsEarned} điểm` : 'Sai rồi! Hãy chờ câu tiếp theo.'
+        message: isCorrect ? `Chính xác! +${pointsEarned} điểm` : 'Chưa đúng! Đang chờ đáp án chính thức.'
       }
     });
 
@@ -295,9 +311,7 @@ export const useGameStore = create((set, get) => ({
           p_question_id: currentQuestion.id,
           p_submitted_answer: submittedAnswerStr
         });
-      } catch (e) {
-        console.warn('RPC submission failed, inserting directly:', e);
-      }
+      } catch (e) {}
     } else {
       broadcastLocalEvent('ANSWER_SUBMITTED', { answerEntry, player: get().player });
     }
@@ -305,7 +319,7 @@ export const useGameStore = create((set, get) => ({
     return { success: true, isCorrect, pointsEarned };
   },
 
-  // 7. Anti-Cheat: Record Tab Switch Violation
+  // Anti-Cheat: Record Tab Switch Violation
   recordTabSwitchViolation: async () => {
     const { player } = get();
     if (!player || player.status === 'eliminated') return;
@@ -330,7 +344,7 @@ export const useGameStore = create((set, get) => ({
     return { violations: newViolations, eliminated: isEliminated };
   },
 
-  // 8. Realtime Subscriptions
+  // Realtime Subscriptions
   subscribeRoomRealtime: (roomId) => {
     if (!supabase) return;
 
@@ -347,13 +361,14 @@ export const useGameStore = create((set, get) => ({
                 availableTiles: shuffleVietnameseWord(q.answer),
                 selectedTiles: [],
                 hasSubmittedCurrentQuestion: false,
-                lastAnswerResult: null
+                lastAnswerResult: null,
+                isAnswerRevealed: false
               });
             }
           }
         }
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => {
         get().fetchRoomPlayers(roomId);
       })
       .subscribe();
@@ -376,7 +391,8 @@ export const useGameStore = create((set, get) => ({
           availableTiles: shuffleVietnameseWord(payload.question.answer),
           selectedTiles: [],
           hasSubmittedCurrentQuestion: false,
-          lastAnswerResult: null
+          lastAnswerResult: null,
+          isAnswerRevealed: false
         });
       } else if (type === 'ANSWER_SUBMITTED') {
         set(state => ({
